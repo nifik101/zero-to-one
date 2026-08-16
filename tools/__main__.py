@@ -1,18 +1,20 @@
-"""Dispatcher: uv run z21 <tool> ..."""
+"""Dispatcher: uv run z21 <tool> ...
+
+Agent-facing tool surface only. Operator/test payment injection is a separate
+entry point: `uv run operator-inject-payment` (see pyproject.toml).
+"""
 
 from __future__ import annotations
 
 import sys
 
-from tools import log_experiment, operator_inject_payment, publish, verify_revenue, wallet_balance
+from tools import log_experiment, publish, verify_revenue, wallet_balance
 
-# Agent-facing tools. operator-inject-payment is operator/test-only (see AGENTS.md).
 COMMANDS = {
     "wallet-balance": wallet_balance.main,
     "verify-revenue": verify_revenue.main,
     "log-experiment": log_experiment.main,
     "publish": publish.main,
-    "operator-inject-payment": operator_inject_payment.main,
 }
 
 
@@ -21,9 +23,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args or args[0] in {"-h", "--help"}:
         names = ", ".join(COMMANDS)
         print(f"usage: z21 {{{names}}}")
-        print("note: operator-inject-payment is operator/test harness only — not for the agent")
         return 0
     command = args[0]
+    if command == "operator-inject-payment":
+        print(
+            "operator-inject-payment is not part of z21; "
+            "run: uv run operator-inject-payment ...",
+            file=sys.stderr,
+        )
+        return 2
     if command not in COMMANDS:
         print(f"unknown tool: {command}", file=sys.stderr)
         return 2

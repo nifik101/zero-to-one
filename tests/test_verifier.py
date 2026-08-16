@@ -5,9 +5,20 @@ from __future__ import annotations
 import unittest
 
 from tools import log_experiment, verify_revenue
+from tools.__main__ import COMMANDS, main as z21_main
 from tools.runtime import connect, wallet_snapshot
 from tools.verifier import evaluate_claim, mission_status
 from helpers import HarnessTestCase
+
+
+class TestZ21AgentSurface(HarnessTestCase):
+    def test_z21_excludes_operator_inject_payment(self) -> None:
+        self.assertNotIn("operator-inject-payment", COMMANDS)
+        self.assertEqual(
+            set(COMMANDS),
+            {"wallet-balance", "verify-revenue", "log-experiment", "publish"},
+        )
+        self.assertEqual(z21_main(["operator-inject-payment", "--amount", "1"]), 2)
 
 
 class TestInvalidRevenue(HarnessTestCase):
