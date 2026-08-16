@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+build/
+dist/
+wheels/
+
+# Virtualenv
+.venv/
+
+# SQLite (JSON-snapshot i state/ committas)
+state/*.db
+state/*.db-journal
+state/*.db-wal
+state/*.db-shm
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
