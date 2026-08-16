@@ -1,4 +1,8 @@
-"""Dispatcher: uv run z21 <tool> ..."""
+"""Dispatcher: uv run z21 <tool> ...
+
+Agent-facing tool surface only. Operator/test payment injection is a separate
+entry point: `uv run operator-inject-payment` (see pyproject.toml).
+"""
 
 from __future__ import annotations
 
@@ -21,6 +25,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"usage: z21 {{{names}}}")
         return 0
     command = args[0]
+    if command == "operator-inject-payment":
+        print(
+            "operator-inject-payment is not part of z21; "
+            "run: uv run operator-inject-payment ...",
+            file=sys.stderr,
+        )
+        return 2
     if command not in COMMANDS:
         print(f"unknown tool: {command}", file=sys.stderr)
         return 2

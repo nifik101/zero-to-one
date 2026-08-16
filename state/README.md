@@ -1,17 +1,20 @@
 # state/
 
-Källa till sanning för strategi, experiment, resultat, kostnader och lärdomar.
+Source of truth for strategy, experiments, actions, results, costs, lessons,
+wallet credits, and revenue claims.
 
-| Fil | Roll |
+| File | Role |
 |---|---|
-| `schema.sql` | SQLite-schema |
-| `zero_to_one.db` | lokal databas (gitignored) |
-| `strategy.json` | snapshot |
-| `experiment.json` | snapshot |
+| `schema.sql` | SQLite schema |
+| `zero_to_one.db` | local database (gitignored) |
+| `strategy.json` | snapshot (at most one `active`) |
+| `experiment.json` | snapshot (at most one `running`) |
+| `action.json` | snapshot (append-only ledger rows) |
 | `result.json` | snapshot |
-| `cost.json` | snapshot |
+| `cost.json` | snapshot (includes `funding_source`) |
 | `lesson.json` | snapshot |
-| `revenue.json` | snapshot |
-| `wallet.json` | saldo mot målet |
+| `wallet_tx.json` | inbound credits (written by operator injector) |
+| `revenue.json` | claims + verifier outcomes |
+| `wallet.json` | wallet balance vs verified/pending revenue, mission flag |
 
-JSON uppdateras av verktygen. Handeditera inte fram "vinster".
+JSON is updated by the tools. Do not hand-edit “wins”.

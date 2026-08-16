@@ -1,9 +1,18 @@
 {
-  "balance_usdc": 0.0,
-  "pending_usdc": 0.0,
-  "costs_usd": 0.0,
+  "wallet_balance_usdc": 0.0,
+  "verified_revenue_usdc": 0.0,
+  "pending_revenue_usdc": 0.0,
+  "external_revenue_usdc": 0.0,
+  "earned_capital_spend_usd": 0.0,
+  "operator_funded_spend_usd": 0.0,
+  "experiment_infrastructure_spend_usd": 0.0,
+  "variable_costs_usd": 0.0,
+  "total_costs_usd": 0.0,
+  "net_profit": 0.0,
   "target_usdc": 1.0,
+  "mission_complete": false,
   "address": null,
   "chain": null,
+  "mode": "mock",
   "updated_at": null
 }

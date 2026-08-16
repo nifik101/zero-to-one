@@ -1,7 +1,7 @@
 [project]
 name = "zero-to-one"
 version = "0.1.0"
-description = "Autonomous agent: $0 → 1 USDC"
+description = "V0 experiment harness: $0 → 1 USDC (mock wallet, independent verifier)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
@@ -11,6 +11,7 @@ z21 = "tools.__main__:main"
 wallet-balance = "tools.wallet_balance:main"
 verify-revenue = "tools.verify_revenue:main"
 log-experiment = "tools.log_experiment:main"
+operator-inject-payment = "tools.operator_inject_payment:main"
 publish = "tools.publish:main"
 
 [build-system]
