@@ -1,10 +1,10 @@
 # logs/
 
-Komplett aktivitetslogg.
+Complete activity log for the harness.
 
-| Fil | Roll |
+| File | Role |
 |---|---|
-| `activity.jsonl` | en händelse per rad, append-only |
-| `published/` | snapshots från `publish` |
+| `activity.jsonl` | one event per line, append-only |
+| `published/` | snapshots from `publish` |
 
-Varje verktyg skriver hit. Ingen sidokanal.
+Each tool writes here. No side channels.

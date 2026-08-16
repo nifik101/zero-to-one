@@ -1,57 +1,95 @@
 # Mission: $0 → 1 USDC
 
-Start: **0 USD, 0 USDC, 0 kredit.**
-Mål: **1 USDC** in på en kontrollerbar plånbok, **verifierad**.
+Machine-oriented mission definition for zero-to-one.
 
-## Varför just 1 USDC
+```yaml
+mission_id: zero-to-one
+version: v0
+start_capital_usd: 0
+start_capital_usdc: 0
+operator_credit_allowed: false
+target_asset: USDC
+target_amount: 1.00
+success_metric: verified_qualifying_usdc
+verifier: tools.verifier.mission_status
+wallet_mode_v0: mock
+```
 
-1 USDC är litet nog att vara möjligt utan kapital, och hårt nog att kräva en riktig ekonomisk loop: någon annan måste vilja ge värde, och värdet måste gå att bevisa.
+## Objective
 
-USD Coin är måttenheten för att resultatet ska vara:
+Start with **zero working capital** and earn at least **1.00 USDC** of **legitimate external revenue** from an **independent third party**.
 
-- stabilt (inte "jag tjänade 1 meme-coin")
-- publikt verifierbart
-- jämförbart över tid
+Revenue that is not approved by the independent verifier counts as **0**.
 
-## Vad som räknas
+## Success
 
-Räknas:
+Success when all of the following are true:
 
-- Betalning i USDC (eller motsvarande som konverterats till USDC) som `verify_revenue` godkänt med bevis.
+1. `verified_usdc >= 1.00`
+2. Every counted dollar has `source_kind = third_party`
+3. Each counted claim is backed by an inbound wallet credit (mock in V0; real later)
+4. `tools.verifier.mission_status(...).mission_complete is true`
 
-Räknas inte:
+Pending claims do **not** count. Agent self-declaration does **not** count.
 
-- Löften, likes, stars, "någon sa att de ska betala"
-- Operatorns egna överföringar
-- Fabricerade kvitton
-- Intäkt på ett konto du inte kontrollerar
-- Allt som kräver att operatorn lägger ut pengar
+## Failure / non-success
 
-## Begränsningar
+Any of the following means the mission is **not** complete:
 
-- Inget startkapital.
-- Inga betalda annonser, inga betalda API:er, inga inköp.
-- Inget brott, inget bedrägeri. Se `AGENTS.md`.
-- Tid är tillåten. Pengar från operatorn är det inte.
+- Verified qualifying balance remains below 1.00 USDC
+- Revenue is only pending / rejected
+- The only “income” is from disallowed sources (below)
+- State was hand-edited to look successful without verifier approval
+- Operator funds, loans, or credits were used as the economic engine
 
-## Strategi (första hypotesen)
+Stopping for safety, legality, or cost-cap reasons is a controlled halt, not a win.
 
-Okänt. Agenten ska *hitta* en väg, inte anta en.
+## What counts as external revenue
 
-Tillåtna riktningar i grova drag:
+**Counts (qualifying):**
 
-- Skapa något någon vill ha och ta betalt i USDC
-- Utföra arbete mot USDC på gratisyta
-- Publicera och sälja digitalt värde utan insats
+- Payment in USDC (or equivalent settled as USDC) from an independent third party
+- In V0: a `mock-wallet credit` with `--source-kind third_party` that `verify-revenue` accepts
 
-Otillåtna riktningar: allt som bryter lagen i `AGENTS.md`.
+**Does not count:**
 
-## Definition of done
+| Kind | Examples |
+|---|---|
+| `faucet` | Testnet faucets, promo faucets, free claim sites |
+| `self_payment` | Paying yourself from another wallet you control |
+| `giveaway` | Contests, airdrops-as-giveaway, charity tipped to self |
+| `circular` | Wash loops, same value cycling between related parties |
+| `operator` | Operator transfers, reimbursements, “here’s 1 USDC to win” |
+
+Also never counts: likes, stars, promises, fabricated receipts, balances on accounts you do not control, or anything that requires the operator to spend money to create the “revenue.”
+
+## Constraints
+
+- No starting capital.
+- No paid ads, paid APIs, or purchases funded by the operator (live mission cost cap = 0).
+- No crime or deception. See `AGENTS.md`.
+- Time is allowed. Operator money is not.
+
+## Strategy
+
+Unknown. The agent must *find* a path, not assume one.
+
+Allowed directions (high level):
+
+- Create something someone wants and charge USDC
+- Perform work for USDC on free surfaces
+- Publish and sell digital value without capital outlay
+
+Forbidden directions: anything that breaks `AGENTS.md`.
+
+## Definition of done (compact)
 
 ```
 verified_usdc >= 1.00
-pending räknas inte
-operator-funded räknas inte
+source_kind == third_party for all counted revenue
+pending does not count
+faucet | self_payment | giveaway | circular | operator do not count
+mission_complete == true  # from independent verifier only
 ```
 
-När det är sant: logga lärdomen, kör `publish`, stoppa uppdraget.
+When true: log the lesson, run `publish`, stop the mission.

@@ -1,4 +1,4 @@
-"""Show verified / pending USDC against the 1 USDC target."""
+"""Show verified / pending USDC, accounting, and mission status."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import json
 
 from tools.runtime import connect, log_activity, wallet_snapshot
+from tools.verifier import mission_status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -15,21 +16,25 @@ def main(argv: list[str] | None = None) -> int:
 
     with connect() as conn:
         snap = wallet_snapshot(conn)
+        mission = mission_status(conn)
 
-    log_activity("wallet_balance", "read", snap)
+    log_activity("wallet_balance", "read", {**snap, "mission": mission})
 
     if args.json:
-        print(json.dumps(snap, ensure_ascii=False, indent=2))
+        print(json.dumps({**snap, "mission": mission}, ensure_ascii=False, indent=2))
         return 0
 
-    print(f"verified   {snap['balance_usdc']:.2f} USDC")
-    print(f"pending    {snap['pending_usdc']:.2f} USDC")
-    print(f"costs      {snap['costs_usd']:.2f} USD")
-    print(f"target     {snap['target_usdc']:.2f} USDC")
-    remaining = max(snap["target_usdc"] - snap["balance_usdc"], 0.0)
-    print(f"remaining  {remaining:.2f} USDC")
+    print(f"verified      {snap['balance_usdc']:.2f} USDC")
+    print(f"pending       {snap['pending_usdc']:.2f} USDC")
+    print(f"ext revenue   {snap['external_revenue_usdc']:.2f} USDC")
+    print(f"var costs     {snap['variable_costs_usd']:.2f} USD")
+    print(f"net profit    {snap['net_profit']:.2f}")
+    print(f"target        {snap['target_usdc']:.2f} USDC")
+    print(f"remaining     {mission['remaining_usdc']:.2f} USDC")
+    print(f"mission       {'COMPLETE' if mission['mission_complete'] else 'incomplete'}")
+    print(f"wallet mode   {snap['mode']}")
     if snap["address"]:
-        print(f"address    {snap['address']} ({snap['chain'] or 'unknown chain'})")
+        print(f"address       {snap['address']} ({snap['chain'] or 'unknown chain'})")
     return 0
 
 

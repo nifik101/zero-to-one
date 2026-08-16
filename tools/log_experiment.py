@@ -1,4 +1,4 @@
-"""Log strategy, experiments, results, costs, and lessons."""
+"""Log strategy, experiments, actions, results, costs, and lessons."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from tools.runtime import connect, log_activity, now, persist, rows_to_dicts
+from tools.runtime import connect, log_activity, now, persist, record_action, rows_to_dicts
 
 
 def cmd_strategy(args: argparse.Namespace) -> int:
@@ -45,8 +45,16 @@ def cmd_start(args: argparse.Namespace) -> int:
             """,
             (ts, ts, args.strategy_id, args.hypothesis, args.method, args.success_criteria or ""),
         )
+        exp_id = int(cur.lastrowid)
+        record_action(
+            conn,
+            "experiment_start",
+            detail=args.hypothesis,
+            experiment_id=exp_id,
+            payload={"hypothesis": args.hypothesis, "method": args.method},
+        )
         persist(conn)
-        payload = {"id": cur.lastrowid, "status": "running"}
+        payload = {"id": exp_id, "status": "running"}
         log_activity("log_experiment", "start", payload)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -72,9 +80,32 @@ def cmd_finish(args: argparse.Namespace, status: str) -> int:
             """,
             (ts, args.id, args.outcome, args.metrics or "{}", success),
         )
+        record_action(
+            conn,
+            f"experiment_{status}",
+            detail=args.outcome,
+            experiment_id=args.id,
+            payload={"success": bool(success)},
+        )
         persist(conn)
         payload = {"id": args.id, "status": status, "success": bool(success)}
         log_activity("log_experiment", status, payload)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_action(args: argparse.Namespace) -> int:
+    with connect() as conn:
+        action_id = record_action(
+            conn,
+            args.kind,
+            detail=args.detail,
+            experiment_id=args.experiment_id,
+            payload={"cli": True},
+        )
+        persist(conn)
+        payload = {"id": action_id, "kind": args.kind}
+        log_activity("log_experiment", "action", payload)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -96,6 +127,13 @@ def cmd_cost(args: argparse.Namespace) -> int:
             """,
             (now(), args.experiment_id, args.amount, args.description),
         )
+        record_action(
+            conn,
+            "cost",
+            detail=args.description,
+            experiment_id=args.experiment_id,
+            payload={"amount_usd": args.amount},
+        )
         persist(conn)
         payload = {"id": cur.lastrowid, "amount_usd": args.amount}
         log_activity("log_experiment", "cost", payload)
@@ -112,6 +150,12 @@ def cmd_lesson(args: argparse.Namespace) -> int:
             """,
             (now(), args.experiment_id, args.text),
         )
+        record_action(
+            conn,
+            "lesson",
+            detail=args.text,
+            experiment_id=args.experiment_id,
+        )
         persist(conn)
         payload = {"id": cur.lastrowid}
         log_activity("log_experiment", "lesson", payload)
@@ -121,14 +165,14 @@ def cmd_lesson(args: argparse.Namespace) -> int:
 
 def cmd_list(args: argparse.Namespace) -> int:
     with connect() as conn:
-        if args.what == "experiments":
-            rows = rows_to_dicts(conn.execute("SELECT * FROM experiment ORDER BY id").fetchall())
-        elif args.what == "results":
-            rows = rows_to_dicts(conn.execute("SELECT * FROM result ORDER BY id").fetchall())
-        elif args.what == "costs":
-            rows = rows_to_dicts(conn.execute("SELECT * FROM cost ORDER BY id").fetchall())
-        else:
-            rows = rows_to_dicts(conn.execute("SELECT * FROM lesson ORDER BY id").fetchall())
+        table = {
+            "experiments": "experiment",
+            "actions": "action",
+            "results": "result",
+            "costs": "cost",
+            "lessons": "lesson",
+        }[args.what]
+        rows = rows_to_dicts(conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall())
     log_activity("log_experiment", "list", {"what": args.what, "count": len(rows)})
     print(json.dumps(rows, ensure_ascii=False, indent=2))
     return 0
@@ -160,6 +204,11 @@ def main(argv: list[str] | None = None) -> int:
     fail.add_argument("--outcome", required=True)
     fail.add_argument("--metrics")
 
+    action = sub.add_parser("action", help="append an action to the ledger")
+    action.add_argument("--kind", required=True)
+    action.add_argument("--detail", default="")
+    action.add_argument("--experiment-id", dest="experiment_id", type=int)
+
     cost = sub.add_parser("cost", help="record a cost (cap is 0 operator USD)")
     cost.add_argument("--amount", required=True, type=float)
     cost.add_argument("--description", required=True)
@@ -169,12 +218,12 @@ def main(argv: list[str] | None = None) -> int:
     lesson.add_argument("--text", required=True)
     lesson.add_argument("--experiment-id", dest="experiment_id", type=int)
 
-    listing = sub.add_parser("list", help="list experiments, results, costs, or lessons")
+    listing = sub.add_parser("list", help="list experiments, actions, results, costs, or lessons")
     listing.add_argument(
         "what",
         nargs="?",
         default="experiments",
-        choices=("experiments", "results", "costs", "lessons"),
+        choices=("experiments", "actions", "results", "costs", "lessons"),
     )
 
     args = parser.parse_args(argv)
@@ -187,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fail":
         args.success = False
         return cmd_finish(args, "failed")
+    if args.command == "action":
+        return cmd_action(args)
     if args.command == "cost":
         return cmd_cost(args)
     if args.command == "lesson":

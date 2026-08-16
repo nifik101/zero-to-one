@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import sys
 
-from tools import log_experiment, publish, verify_revenue, wallet_balance
+from tools import log_experiment, mock_wallet, publish, verify_revenue, wallet_balance
 
 COMMANDS = {
     "wallet-balance": wallet_balance.main,
     "verify-revenue": verify_revenue.main,
     "log-experiment": log_experiment.main,
+    "mock-wallet": mock_wallet.main,
     "publish": publish.main,
 }
 
