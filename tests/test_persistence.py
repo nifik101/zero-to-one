@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from tools import log_experiment, mock_wallet, verify_revenue
+from tools import log_experiment, verify_revenue
 from tools import runtime
 from tools.runtime import connect, wallet_snapshot
 from tools.verifier import mission_status
@@ -40,25 +40,12 @@ class TestPersistenceResume(HarnessTestCase):
         log_experiment.main(
             ["action", "--kind", "publish_offer", "--detail", "posted offer", "--experiment-id", "1"]
         )
-        mock_wallet.main(
-            [
-                "credit",
-                "--amount",
-                "1.0",
-                "--source-kind",
-                "third_party",
-                "--counterparty",
-                "buyer-9",
-            ]
-        )
-        with connect() as conn:
-            tx_id = conn.execute("SELECT id FROM wallet_tx").fetchone()[0]
+        tx_id = self.inject(1.0, "third_party", counterparty="buyer-9")
         verify_revenue.main(["--wallet-tx-id", str(tx_id)])
 
         self.assertTrue(runtime.DB_PATH.exists())
         self.assertTrue(runtime.ACTIVITY_LOG.exists())
 
-        # Simulate a new process: reopen DB and read prior state (no conversation context).
         with connect() as conn:
             experiments = conn.execute("SELECT * FROM experiment").fetchall()
             actions = conn.execute("SELECT * FROM action ORDER BY id").fetchall()
@@ -74,15 +61,25 @@ class TestPersistenceResume(HarnessTestCase):
         self.assertTrue(status["mission_complete"])
         self.assertTrue(snap["mission_complete"])
 
-        # JSON mirrors exist for resume/inspection without SQLite tools.
         exp_json = json.loads((self.state / "experiment.json").read_text(encoding="utf-8"))
         self.assertEqual(exp_json[0]["hypothesis"], "someone will pay 1 USDC")
         wallet_json = json.loads((self.state / "wallet.json").read_text(encoding="utf-8"))
-        self.assertEqual(wallet_json["balance_usdc"], 1.0)
+        self.assertEqual(wallet_json["verified_revenue_usdc"], 1.0)
+        self.assertEqual(wallet_json["wallet_balance_usdc"], 1.0)
 
     def test_activity_log_is_append_only_jsonl(self) -> None:
         log_experiment.main(
             ["start", "--hypothesis", "h1", "--method", "m1", "--success-criteria", "c1"]
+        )
+        log_experiment.main(
+            [
+                "complete",
+                "--id",
+                "1",
+                "--outcome",
+                "done",
+                "--success",
+            ]
         )
         log_experiment.main(
             ["start", "--hypothesis", "h2", "--method", "m2", "--success-criteria", "c2"]
@@ -96,31 +93,55 @@ class TestPersistenceResume(HarnessTestCase):
             self.assertIn("action", event)
 
     def test_duplicate_claim_rejected(self) -> None:
-        mock_wallet.main(
-            ["credit", "--amount", "1.0", "--source-kind", "third_party", "--counterparty", "z"]
-        )
-        with connect() as conn:
-            tx_id = conn.execute("SELECT id FROM wallet_tx").fetchone()[0]
+        tx_id = self.inject(1.0, "third_party", counterparty="z")
         self.assertEqual(verify_revenue.main(["--wallet-tx-id", str(tx_id)]), 0)
         self.assertEqual(verify_revenue.main(["--wallet-tx-id", str(tx_id)]), 2)
 
 
 class TestAccounting(HarnessTestCase):
-    def test_net_profit_subtracts_costs(self) -> None:
-        mock_wallet.main(
-            ["credit", "--amount", "1.0", "--source-kind", "third_party", "--counterparty", "c"]
-        )
-        with connect() as conn:
-            tx_id = conn.execute("SELECT id FROM wallet_tx").fetchone()[0]
+    def test_net_profit_subtracts_earned_costs(self) -> None:
+        tx_id = self.inject(1.0, "third_party", counterparty="c")
         verify_revenue.main(["--wallet-tx-id", str(tx_id)])
         log_experiment.main(
-            ["cost", "--amount", "0.25", "--description", "variable packaging (hypothetical)"]
+            [
+                "cost",
+                "--amount",
+                "0.25",
+                "--funding-source",
+                "earned_capital",
+                "--description",
+                "variable packaging",
+            ]
         )
         with connect() as conn:
             snap = wallet_snapshot(conn)
+            status = mission_status(conn)
         self.assertAlmostEqual(snap["external_revenue_usdc"], 1.0)
         self.assertAlmostEqual(snap["variable_costs_usd"], 0.25)
         self.assertAlmostEqual(snap["net_profit"], 0.75)
+        self.assertTrue(status["mission_complete"])
+
+    def test_infrastructure_cost_does_not_block_or_enter_variable_costs(self) -> None:
+        tx_id = self.inject(1.0, "third_party", counterparty="c")
+        verify_revenue.main(["--wallet-tx-id", str(tx_id)])
+        log_experiment.main(
+            [
+                "cost",
+                "--amount",
+                "50",
+                "--funding-source",
+                "experiment_infrastructure",
+                "--description",
+                "host + included compute",
+            ]
+        )
+        with connect() as conn:
+            snap = wallet_snapshot(conn)
+            status = mission_status(conn)
+        self.assertAlmostEqual(snap["experiment_infrastructure_spend_usd"], 50.0)
+        self.assertAlmostEqual(snap["variable_costs_usd"], 0.0)
+        self.assertAlmostEqual(snap["net_profit"], 1.0)
+        self.assertTrue(status["mission_complete"])
 
 
 if __name__ == "__main__":

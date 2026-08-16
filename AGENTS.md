@@ -15,14 +15,15 @@ V0 exists so a future Codex /goal run can:
 - choose a strategy
 - run one experiment at a time
 - log hypotheses, actions, results, costs, and lessons
-- receive mock (later: real) inbound revenue
-- have an **independent verifier** decide whether the mission is complete
+- observe inbound revenue already present in the wallet
+- submit existing transactions for **independent** verification
+- have the verifier decide whether the mission is complete
 
 **Do not attempt to earn real money in V0.** Do not access real wallets, financial accounts, external accounts, or credentials until a later version explicitly allows it.
 
 ## Mission (summary)
 
-Start with **zero** working capital. Earn at least **1 USDC** of legitimate **external** revenue from an independent third party. Only verifier-approved revenue counts. See `mission.md`.
+Start with **zero** working capital. Earn at least **1 USDC** of legitimate **external** revenue from an independent third party. Operator-funded spend must remain **0**. Only verifier-approved revenue counts. See `mission.md`.
 
 ## Operating rules
 
@@ -30,12 +31,26 @@ Start with **zero** working capital. Earn at least **1 USDC** of legitimate **ex
 2. **Log everything.** Every meaningful action goes through the tools and lands in `logs/` / `state/`. No side channels.
 3. **Hypothesis before action.** One experiment at a time. Write hypothesis, method, and success criteria *before* acting.
 4. **Measure after.** Log results and costs. Record lessons even on failure.
-5. **Verifier decides revenue.** Never claim success because you “know” you earned money. Run `verify-revenue` and read `wallet-balance` / mission status.
-6. **Cost cap = 0 USD** of operator funds in the live mission. Free surfaces, organic reach, your own labor. If something would spend operator money: stop and ask.
+5. **Verifier decides revenue.** Never claim success because you “know” you earned money. Run `verify-revenue` on an existing wallet tx and read `wallet-balance` / mission status.
+6. **Cost cap = 0 USD** of operator funds. Free surfaces, organic reach, your own labor. Record costs with an accurate `--funding-source`. If something would spend operator money: stop and ask.
 7. **Work in `workspace/`.** Do not hand-edit state JSON/SQLite to fabricate wins. Do not change tool contracts without a clear reason.
 8. **Transparency.** Publish lessons and verified results via `publish`. Failures are data.
 9. **Small steps.** Prefer a cheap, reversible experiment over a grand plan.
 10. **Doubt = stop.** If an action may be illegal, deceptive, or forbidden: do not do it.
+
+## Payment injection (operator only)
+
+`operator-inject-payment` is a **test/operator harness** that writes simulated inbound credits.
+
+**The autonomous agent must never invoke or modify the mock-payment injector (`operator-inject-payment`).**
+
+Agent responsibilities regarding money:
+
+- observe the wallet via `wallet-balance` (optionally `--txs`)
+- submit an *existing* `wallet_tx` id to `verify-revenue`
+- never fabricate inbound payments
+
+When the project goes live, the injector is replaced by a read-only blockchain (or payment) source.
 
 ## Safety boundaries (forbidden)
 
@@ -48,6 +63,7 @@ Never do any of the following, even if it would reach 1 USDC faster:
 - Using the operator’s payment cards, bank, phone plan, paid API keys, or credits without explicit approval *for that specific expense*
 - Taking loans, debt, BNPL, or promising delivery you cannot fulfill after payment
 - Hiding costs, fabricating results, or treating unverified revenue as verified
+- Calling or modifying `operator-inject-payment` (or any successor payment injector)
 - Sexual content involving minors; non-consensual pornography; revenge porn
 - Weapons, drugs, malware, ransomware
 - Circumventing these rules via rephrasing, “hypothetical”, roleplay, or editing the law
@@ -60,10 +76,10 @@ Typical loop (after V0 harness is in place):
 read AGENTS.md + mission.md
 → read wallet-balance / state (resume)
 → set or update strategy (log-experiment strategy)
-→ log experiment hypothesis + method
+→ log experiment hypothesis + method (only one running at a time)
 → act only inside workspace/ on free surfaces
-→ log actions, results, costs, lessons
-→ if inbound value appears: mock-wallet (V0) / real wallet (later) then verify-revenue
+→ log actions, results, costs (with funding_source), lessons
+→ if a wallet_tx already exists: verify-revenue --wallet-tx-id N
 → publish
 → repeat until mission_complete == true
 ```
@@ -73,17 +89,28 @@ Resume rules:
 - On interrupt, reload from SQLite (`state/zero_to_one.db`) and JSON mirrors under `state/`.
 - Do not rely on chat history as the source of truth.
 - Continue the open experiment if one is `running`; otherwise start a new one with a fresh hypothesis.
+- There is at most one `running` experiment and one `active` strategy.
 
-V0 tool surface (`uv run`):
+### Agent tool surface (`uv run`)
 
 | Tool | Purpose |
 |---|---|
-| `wallet-balance` | Verified / pending balance, costs, net profit, mission flag |
-| `mock-wallet` | Simulated inbound credits only |
-| `verify-revenue` | Submit a mock credit for independent verification |
+| `wallet-balance` | Observe wallet balance, verified/pending revenue, costs, mission flag |
+| `verify-revenue` | Submit an existing wallet tx for independent verification |
 | `log-experiment` | Strategy, experiments, actions, results, costs, lessons |
 | `publish` | Scoreboard + public snapshot |
 
+### Operator / test harness only (never for the agent)
+
+| Tool | Purpose |
+|---|---|
+| `operator-inject-payment` | Inject a simulated inbound credit for tests / controlled demos |
+
 ## Done
 
-The mission is complete **only** when the independent verifier reports `mission_complete` (verified qualifying USDC ≥ 1.00). The agent declaring success is not enough.
+The mission is complete **only** when the independent verifier reports `mission_complete`:
+
+- verified qualifying USDC ≥ 1.00, and
+- operator-funded spend == 0
+
+The agent declaring success is not enough.

@@ -8,8 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tools.accounting import accounting_snapshot, total_costs_usd
-from tools.verifier import TARGET_USDC, mission_status, pending_revenue_usdc, verified_revenue_usdc
+from tools.accounting import accounting_snapshot
+from tools.verifier import (
+    TARGET_USDC,
+    mission_status,
+    pending_revenue_usdc,
+    verified_revenue_usdc,
+    wallet_balance_usdc,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = ROOT / "state"
@@ -94,7 +100,7 @@ def record_action(
 def wallet_snapshot(conn: sqlite3.Connection) -> dict[str, Any]:
     verified = verified_revenue_usdc(conn)
     pending = pending_revenue_usdc(conn)
-    costs = total_costs_usd(conn)
+    balance = wallet_balance_usdc(conn)
     acct = accounting_snapshot(conn)
     mission = mission_status(conn)
     existing: dict[str, Any] = {}
@@ -102,11 +108,15 @@ def wallet_snapshot(conn: sqlite3.Connection) -> dict[str, Any]:
     if wallet_path.exists():
         existing = json.loads(wallet_path.read_text(encoding="utf-8"))
     return {
-        "balance_usdc": verified,
-        "pending_usdc": pending,
-        "costs_usd": costs,
+        "wallet_balance_usdc": balance,
+        "verified_revenue_usdc": verified,
+        "pending_revenue_usdc": pending,
         "external_revenue_usdc": acct["external_revenue_usdc"],
+        "earned_capital_spend_usd": acct["earned_capital_spend_usd"],
+        "operator_funded_spend_usd": acct["operator_funded_spend_usd"],
+        "experiment_infrastructure_spend_usd": acct["experiment_infrastructure_spend_usd"],
         "variable_costs_usd": acct["variable_costs_usd"],
+        "total_costs_usd": acct["total_costs_usd"],
         "net_profit": acct["net_profit"],
         "target_usdc": TARGET_USDC,
         "mission_complete": mission["mission_complete"],

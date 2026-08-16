@@ -38,19 +38,23 @@ def render_progress(
     exp_lines = "\n".join(
         f"- #{row['id']} `{row['status']}` — {row['hypothesis']}" for row in experiments[-8:]
     ) or "- _(none yet)_"
+    blockers = ", ".join(mission.get("blockers") or []) or "_(none)_"
 
     return f"""# Progress
 
 | | |
 |---|---|
-| Verified | **{snap['balance_usdc']:.2f} USDC** |
-| Pending | {snap['pending_usdc']:.2f} USDC |
+| Wallet balance | {snap['wallet_balance_usdc']:.2f} USDC |
+| Verified revenue | **{snap['verified_revenue_usdc']:.2f} USDC** |
+| Pending revenue | {snap['pending_revenue_usdc']:.2f} USDC |
 | External revenue | {snap['external_revenue_usdc']:.2f} USDC |
+| Operator spend | {snap['operator_funded_spend_usd']:.2f} USD |
 | Variable costs | {snap['variable_costs_usd']:.2f} USD |
 | Net profit | {snap['net_profit']:.2f} |
 | Remaining | {mission['remaining_usdc']:.2f} USDC |
 | Target | {snap['target_usdc']:.2f} USDC |
 | Mission | {'complete' if mission['mission_complete'] else 'incomplete'} |
+| Blockers | {blockers} |
 | Status | {status} |
 | Updated | {snap['updated_at']} |
 

@@ -25,11 +25,15 @@ class HarnessTestCase(unittest.TestCase):
         (self.state / "wallet.json").write_text(
             json.dumps(
                 {
-                    "balance_usdc": 0.0,
-                    "pending_usdc": 0.0,
-                    "costs_usd": 0.0,
+                    "wallet_balance_usdc": 0.0,
+                    "verified_revenue_usdc": 0.0,
+                    "pending_revenue_usdc": 0.0,
                     "external_revenue_usdc": 0.0,
+                    "earned_capital_spend_usd": 0.0,
+                    "operator_funded_spend_usd": 0.0,
+                    "experiment_infrastructure_spend_usd": 0.0,
                     "variable_costs_usd": 0.0,
+                    "total_costs_usd": 0.0,
                     "net_profit": 0.0,
                     "target_usdc": 1.0,
                     "mission_complete": False,
@@ -64,3 +68,30 @@ class HarnessTestCase(unittest.TestCase):
         for key, value in self._orig.items():
             setattr(runtime, key, value)
         shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def inject(
+        self,
+        amount: float,
+        source_kind: str,
+        counterparty: str = "fixture",
+        ref: str = "",
+    ) -> int:
+        from tools import operator_inject_payment
+
+        rc = operator_inject_payment.main(
+            [
+                "--amount",
+                str(amount),
+                "--source-kind",
+                source_kind,
+                "--counterparty",
+                counterparty,
+                "--ref",
+                ref,
+            ]
+        )
+        self.assertEqual(rc, 0)
+        from tools.runtime import connect
+
+        with connect() as conn:
+            return int(conn.execute("SELECT MAX(id) FROM wallet_tx").fetchone()[0])

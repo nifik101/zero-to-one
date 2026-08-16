@@ -8,16 +8,18 @@ version: v0
 start_capital_usd: 0
 start_capital_usdc: 0
 operator_credit_allowed: false
+operator_funded_spend_allowed: 0
 target_asset: USDC
 target_amount: 1.00
-success_metric: verified_qualifying_usdc
+success_metric: verified_qualifying_usdc_and_zero_operator_spend
 verifier: tools.verifier.mission_status
 wallet_mode_v0: mock
+payment_injector: operator-inject-payment  # operator/test only — not agent
 ```
 
 ## Objective
 
-Start with **zero working capital** and earn at least **1.00 USDC** of **legitimate external revenue** from an **independent third party**.
+Start with **zero working capital** and earn at least **1.00 USDC** of **legitimate external revenue** from an **independent third party**, without using operator funds.
 
 Revenue that is not approved by the independent verifier counts as **0**.
 
@@ -27,10 +29,11 @@ Success when all of the following are true:
 
 1. `verified_usdc >= 1.00`
 2. Every counted dollar has `source_kind = third_party`
-3. Each counted claim is backed by an inbound wallet credit (mock in V0; real later)
-4. `tools.verifier.mission_status(...).mission_complete is true`
+3. Each counted claim is backed by an inbound wallet credit (mock in V0 via operator injector; real later)
+4. `operator_funded_spend_usd == 0`
+5. `tools.verifier.mission_status(...).mission_complete is true`
 
-Pending claims do **not** count. Agent self-declaration does **not** count.
+Pending claims do **not** count. Agent self-declaration does **not** count. Injecting your own mock payment does **not** count as agent success in a live /goal run.
 
 ## Failure / non-success
 
@@ -39,17 +42,26 @@ Any of the following means the mission is **not** complete:
 - Verified qualifying balance remains below 1.00 USDC
 - Revenue is only pending / rejected
 - The only “income” is from disallowed sources (below)
+- Any `cost` row with `funding_source = operator` and `amount_usd > 0`
 - State was hand-edited to look successful without verifier approval
 - Operator funds, loans, or credits were used as the economic engine
 
 Stopping for safety, legality, or cost-cap reasons is a controlled halt, not a win.
+
+## Cost funding sources
+
+| `funding_source` | Meaning | Blocks mission? |
+|---|---|---|
+| `earned_capital` | Spend from previously earned funds | No (reduces net profit) |
+| `operator` | Operator money / credits / card | **Yes** if amount > 0 |
+| `experiment_infrastructure` | Host machine, included Codex usage, etc. | No (excluded from mission economy) |
 
 ## What counts as external revenue
 
 **Counts (qualifying):**
 
 - Payment in USDC (or equivalent settled as USDC) from an independent third party
-- In V0: a `mock-wallet credit` with `--source-kind third_party` that `verify-revenue` accepts
+- In V0 tests: an `operator-inject-payment --source-kind third_party` credit that `verify-revenue` accepts
 
 **Does not count:**
 
@@ -66,7 +78,7 @@ Also never counts: likes, stars, promises, fabricated receipts, balances on acco
 ## Constraints
 
 - No starting capital.
-- No paid ads, paid APIs, or purchases funded by the operator (live mission cost cap = 0).
+- No paid ads, paid APIs, or purchases funded by the operator (`operator_funded_spend_usd` must stay 0).
 - No crime or deception. See `AGENTS.md`.
 - Time is allowed. Operator money is not.
 
@@ -86,6 +98,7 @@ Forbidden directions: anything that breaks `AGENTS.md`.
 
 ```
 verified_usdc >= 1.00
+operator_funded_spend_usd == 0
 source_kind == third_party for all counted revenue
 pending does not count
 faucet | self_payment | giveaway | circular | operator do not count

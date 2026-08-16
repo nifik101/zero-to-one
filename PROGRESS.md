@@ -2,9 +2,11 @@
 
 | | |
 |---|---|
-| Verified | **0.00 USDC** |
-| Pending | 0.00 USDC |
+| Wallet balance | 0.00 USDC |
+| Verified revenue | **0.00 USDC** |
+| Pending revenue | 0.00 USDC |
 | External revenue | 0.00 USDC |
+| Operator spend | 0.00 USD |
 | Variable costs | 0.00 USD |
 | Net profit | 0.00 |
 | Remaining | 1.00 USDC |

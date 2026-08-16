@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 
+from tools.accounting import FUNDING_SOURCES
 from tools.runtime import connect, log_activity, now, persist, record_action, rows_to_dicts
 
 
@@ -20,6 +22,11 @@ def cmd_strategy(args: argparse.Namespace) -> int:
             print("strategy add requires --title and --content", file=sys.stderr)
             return 2
         ts = now()
+        # Keep exactly one active strategy: supersede any current active row.
+        conn.execute(
+            "UPDATE strategy SET status = 'paused', updated_at = ? WHERE status = 'active'",
+            (ts,),
+        )
         cur = conn.execute(
             """
             INSERT INTO strategy (created_at, updated_at, title, content, status)
@@ -28,7 +35,7 @@ def cmd_strategy(args: argparse.Namespace) -> int:
             (ts, ts, args.title, args.content),
         )
         persist(conn)
-        payload = {"id": cur.lastrowid, "title": args.title}
+        payload = {"id": cur.lastrowid, "title": args.title, "status": "active"}
         log_activity("log_experiment", "strategy_add", payload)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -37,14 +44,42 @@ def cmd_strategy(args: argparse.Namespace) -> int:
 def cmd_start(args: argparse.Namespace) -> int:
     ts = now()
     with connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO experiment (
-                created_at, updated_at, strategy_id, hypothesis, method, success_criteria, status
-            ) VALUES (?, ?, ?, ?, ?, ?, 'running')
-            """,
-            (ts, ts, args.strategy_id, args.hypothesis, args.method, args.success_criteria or ""),
-        )
+        running = conn.execute(
+            "SELECT id FROM experiment WHERE status = 'running' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if running is not None:
+            msg = (
+                f"experiment {running['id']} is already running; "
+                "complete/fail it before starting another"
+            )
+            print(msg, file=sys.stderr)
+            log_activity(
+                "log_experiment",
+                "start_rejected",
+                {"running_id": running["id"]},
+                status="error",
+            )
+            return 2
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO experiment (
+                    created_at, updated_at, strategy_id, hypothesis, method, success_criteria, status
+                ) VALUES (?, ?, ?, ?, ?, ?, 'running')
+                """,
+                (ts, ts, args.strategy_id, args.hypothesis, args.method, args.success_criteria or ""),
+            )
+        except sqlite3.IntegrityError:
+            running = conn.execute(
+                "SELECT id FROM experiment WHERE status = 'running' ORDER BY id LIMIT 1"
+            ).fetchone()
+            rid = running["id"] if running else "?"
+            print(
+                f"experiment {rid} is already running; complete/fail it before starting another",
+                file=sys.stderr,
+            )
+            log_activity("log_experiment", "start_rejected", {"running_id": rid}, status="error")
+            return 2
         exp_id = int(cur.lastrowid)
         record_action(
             conn,
@@ -114,28 +149,39 @@ def cmd_cost(args: argparse.Namespace) -> int:
     if args.amount < 0:
         print("cost amount must be >= 0", file=sys.stderr)
         return 2
-    if args.amount > 0:
+    funding = args.funding_source.strip().lower()
+    if funding not in FUNDING_SOURCES:
         print(
-            "warning: mission cost cap is 0 USD of operator funds — record only if already incurred",
+            f"funding_source must be one of: {', '.join(sorted(FUNDING_SOURCES))}",
+            file=sys.stderr,
+        )
+        return 2
+    if funding == "operator" and args.amount > 0:
+        print(
+            "warning: operator-funded spend blocks mission_complete until cleared/zero",
             file=sys.stderr,
         )
     with connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO cost (created_at, experiment_id, amount_usd, description)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO cost (created_at, experiment_id, amount_usd, funding_source, description)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (now(), args.experiment_id, args.amount, args.description),
+            (now(), args.experiment_id, args.amount, funding, args.description),
         )
         record_action(
             conn,
             "cost",
             detail=args.description,
             experiment_id=args.experiment_id,
-            payload={"amount_usd": args.amount},
+            payload={"amount_usd": args.amount, "funding_source": funding},
         )
         persist(conn)
-        payload = {"id": cur.lastrowid, "amount_usd": args.amount}
+        payload = {
+            "id": cur.lastrowid,
+            "amount_usd": args.amount,
+            "funding_source": funding,
+        }
         log_activity("log_experiment", "cost", payload)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -163,21 +209,6 @@ def cmd_lesson(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_list(args: argparse.Namespace) -> int:
-    with connect() as conn:
-        table = {
-            "experiments": "experiment",
-            "actions": "action",
-            "results": "result",
-            "costs": "cost",
-            "lessons": "lesson",
-        }[args.what]
-        rows = rows_to_dicts(conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall())
-    log_activity("log_experiment", "list", {"what": args.what, "count": len(rows)})
-    print(json.dumps(rows, ensure_ascii=False, indent=2))
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="log-experiment", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -187,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     strategy.add_argument("--title")
     strategy.add_argument("--content")
 
-    start = sub.add_parser("start", help="open a running experiment")
+    start = sub.add_parser("start", help="open a running experiment (only one allowed)")
     start.add_argument("--hypothesis", required=True)
     start.add_argument("--method", required=True)
     start.add_argument("--success-criteria", dest="success_criteria", default="")
@@ -209,9 +240,15 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--detail", default="")
     action.add_argument("--experiment-id", dest="experiment_id", type=int)
 
-    cost = sub.add_parser("cost", help="record a cost (cap is 0 operator USD)")
+    cost = sub.add_parser("cost", help="record a cost with funding source")
     cost.add_argument("--amount", required=True, type=float)
     cost.add_argument("--description", required=True)
+    cost.add_argument(
+        "--funding-source",
+        required=True,
+        choices=sorted(FUNDING_SOURCES),
+        help="earned_capital | operator | experiment_infrastructure",
+    )
     cost.add_argument("--experiment-id", dest="experiment_id", type=int)
 
     lesson = sub.add_parser("lesson", help="record a lesson")
@@ -243,6 +280,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "lesson":
         return cmd_lesson(args)
     return cmd_list(args)
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    with connect() as conn:
+        table = {
+            "experiments": "experiment",
+            "actions": "action",
+            "results": "result",
+            "costs": "cost",
+            "lessons": "lesson",
+        }[args.what]
+        rows = rows_to_dicts(conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall())
+    log_activity("log_experiment", "list", {"what": args.what, "count": len(rows)})
+    print(json.dumps(rows, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":

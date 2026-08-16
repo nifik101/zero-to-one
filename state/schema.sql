@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS strategy (
         CHECK (status IN ('active', 'paused', 'abandoned', 'completed'))
 );
 
+-- At most one current/active strategy.
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_strategy
+ON strategy(status)
+WHERE status = 'active';
+
 CREATE TABLE IF NOT EXISTS experiment (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
@@ -23,6 +28,11 @@ CREATE TABLE IF NOT EXISTS experiment (
     status TEXT NOT NULL DEFAULT 'planned'
         CHECK (status IN ('planned', 'running', 'completed', 'failed', 'aborted'))
 );
+
+-- At most one running experiment (resume must be unambiguous).
+CREATE UNIQUE INDEX IF NOT EXISTS one_running_experiment
+ON experiment(status)
+WHERE status = 'running';
 
 -- Append-only style action log (rows are never updated by tools).
 CREATE TABLE IF NOT EXISTS action (
@@ -48,6 +58,8 @@ CREATE TABLE IF NOT EXISTS cost (
     created_at TEXT NOT NULL,
     experiment_id INTEGER REFERENCES experiment(id),
     amount_usd REAL NOT NULL,
+    funding_source TEXT NOT NULL
+        CHECK (funding_source IN ('earned_capital', 'operator', 'experiment_infrastructure')),
     description TEXT NOT NULL
 );
 
@@ -59,6 +71,7 @@ CREATE TABLE IF NOT EXISTS lesson (
 );
 
 -- Simulated inbound wallet credits only (no outbound / chain integration in V0).
+-- Rows are written only by the operator injector, never by the agent tool surface.
 CREATE TABLE IF NOT EXISTS wallet_tx (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
@@ -79,7 +92,7 @@ CREATE TABLE IF NOT EXISTS revenue (
     counterparty TEXT NOT NULL DEFAULT '',
     proof_type TEXT NOT NULL,
     proof TEXT NOT NULL,
-    wallet_tx_id INTEGER REFERENCES wallet_tx(id),
+    wallet_tx_id INTEGER NOT NULL UNIQUE REFERENCES wallet_tx(id),
     verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
     rejection_reason TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT ''

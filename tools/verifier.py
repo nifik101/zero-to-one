@@ -1,8 +1,8 @@
 """Independent mission / revenue verifier.
 
-The agent may submit claims. This module alone decides whether revenue
-qualifies and whether the mission success condition is met. There is no
-API here that lets a caller force `verified=1`.
+The agent may submit claims against existing wallet transactions. This module
+alone decides whether revenue qualifies and whether the mission success
+condition is met. There is no API here that lets a caller force `verified=1`.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def evaluate_claim(
     if kind not in ALLOWED_SOURCE_KINDS:
         return False, f"unknown_source:{kind}"
 
-    # V0: every verified dollar must be backed by a mock inbound wallet credit.
+    # V0: every verified dollar must be backed by an inbound wallet credit.
     if wallet_tx is None:
         return False, "missing_wallet_tx"
 
@@ -83,16 +83,45 @@ def pending_revenue_usdc(conn: sqlite3.Connection) -> float:
     return float(row[0])
 
 
+def wallet_balance_usdc(conn: sqlite3.Connection) -> float:
+    """Sum of inbound mock (later: real) wallet credits — not verified revenue."""
+    row = conn.execute("SELECT COALESCE(SUM(amount_usdc), 0) FROM wallet_tx").fetchone()
+    return float(row[0])
+
+
+def operator_funded_spend_usd(conn: sqlite3.Connection) -> float:
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(amount_usd), 0) FROM cost
+        WHERE funding_source = 'operator'
+        """
+    ).fetchone()
+    return float(row[0])
+
+
 def mission_status(conn: sqlite3.Connection) -> dict[str, Any]:
     verified = verified_revenue_usdc(conn)
     pending = pending_revenue_usdc(conn)
-    complete = verified >= TARGET_USDC
+    operator_spend = operator_funded_spend_usd(conn)
+    revenue_ok = verified >= TARGET_USDC
+    operator_ok = operator_spend == 0.0
+    complete = revenue_ok and operator_ok
+    blockers: list[str] = []
+    if not revenue_ok:
+        blockers.append("verified_revenue_below_target")
+    if not operator_ok:
+        blockers.append("operator_funded_spend_nonzero")
     return {
         "verified_usdc": verified,
         "pending_usdc": pending,
+        "wallet_balance_usdc": wallet_balance_usdc(conn),
+        "operator_funded_spend_usd": operator_spend,
         "target_usdc": TARGET_USDC,
         "remaining_usdc": max(TARGET_USDC - verified, 0.0),
         "mission_complete": complete,
-        # Pending never satisfies the mission.
-        "success_definition": "verified_usdc >= 1.00 from qualifying third_party revenue",
+        "blockers": blockers,
+        "success_definition": (
+            "verified_usdc >= 1.00 from qualifying third_party revenue "
+            "AND operator_funded_spend_usd == 0"
+        ),
     }
